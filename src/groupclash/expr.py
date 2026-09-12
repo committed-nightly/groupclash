@@ -413,10 +413,19 @@ def evaluate(template: str, resolve) -> Seq:
     position = 0
     for match in HOLE_RE.finditer(template):
         out.append(Value(FIXED, text=template[position : match.start()]))
+        raw = match.group(1).strip()
         try:
-            out.extend(Parser(tokenise(match.group(1)), resolve).parse())
+            parsed = Parser(tokenise(raw), resolve).parse()
         except ExpressionError:
-            out.append(Value(UNKNOWN, source=match.group(1).strip()))
+            parsed = [Value(UNKNOWN, source=raw)]
+        # A compound expression that could not be decided arrives here with
+        # nothing to call itself -- the `||` that gave up does not know which
+        # operand was to blame. Naming the whole expression is the difference
+        # between "cannot decide an expression" and a report someone can act
+        # on.
+        if len(parsed) == 1 and parsed[0].kind == UNKNOWN and not parsed[0].source:
+            parsed = [Value(UNKNOWN, source=raw)]
+        out.extend(parsed)
         position = match.end()
     out.append(Value(FIXED, text=template[position:]))
     return flatten(out)

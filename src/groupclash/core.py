@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .contexts import Site, resolver, single_ref_event
+from .contexts import Site, refs_can_overlap, resolver
 from .expr import (
     EMPTY,
     KNOWN_TEXT,
@@ -258,9 +258,9 @@ def check_declaration(decl: Concurrency, repository: str, report: Report) -> lis
             # deliberate. Left alone.
             continue
 
-        if single_ref_event(form.event, decl.triggers.get(form.event)):
-            # Only one ref can ever run this, so a fixed group is exactly as
-            # specific as github.ref would have been.
+        if not refs_can_overlap(form.event, decl.triggers.get(form.event)):
+            # Two runs on different refs cannot be in flight at once, so a
+            # fixed group is exactly as specific as github.ref would have been.
             continue
 
         buckets.setdefault(IGNORES_REF, []).append((form, cancel))

@@ -230,37 +230,52 @@ def _event_payload(path: str, event: str) -> Value:
         return Value(EMPTY, source=path)
     if path == "github.event.workflow_run.id":
         if event == "workflow_run":
-            return Value(PER_RUN, source=path)
+            # Not PER_RUN, despite the name. Re-running the upstream workflow
+            # delivers a second event carrying the *same* run id, so a group
+            # built from it does have something to cancel -- it means "my
+            # previous run for this upstream run", which is a real key and
+            # not a unique one.
+            return Value(PER_REF, source=path)
         return Value(EMPTY, source=path)
     if path == "github.event.inputs" or path.startswith("github.event.inputs."):
         return Value(UNKNOWN, source=path)
     return Value(UNKNOWN, source=path)
 
 
-def single_ref_event(event: str, config) -> bool:
-    """Whether every run of this event happens on the same ref.
+def refs_can_overlap(event: str, config) -> bool:
+    """Whether two runs of this event, on different refs, can be in flight
 
-    When it does, a constant group is not a bug: there is only one branch for
-    it to be constant across. `on: push: branches: [main]` with
-    `group: deploy` behaves exactly like `group: ${{ github.ref }}`, and
-    reporting it would be noise -- which is how a checker stops being run.
+    at once without somebody arranging it deliberately. That -- not "how many
+    refs are possible" -- is the question a constant group turns on.
 
-    Note this is a different question from the one about which branch GitHub
-    *reads the workflow from*. A `workflow_dispatch` is listed from the
-    default branch but runs against whichever ref you pick, so it is not
-    single-ref here even though the file has to be on the default branch.
+    `on: push: branches: [main]` with `group: deploy` behaves exactly like
+    `group: ${{ github.ref }}`: there is only one branch for it to be constant
+    across. Reporting that would be noise, and noise is how a checker stops
+    being run.
+
+    `workflow_dispatch` is the interesting one. It can run against any ref, so
+    two dispatches on two branches genuinely do share a constant group -- but
+    someone has to start both by hand, and `group: ${{ github.workflow }}` on
+    a manual publish workflow is a deliberate "one at a time", not a mistake.
+    Checked against real repositories this was the single largest source of
+    false positives, so it is not reported. A workflow with `pull_request` as
+    well is still caught, on that event.
     """
     if event in DEFAULT_BRANCH_EVENTS:
-        return True
+        return False
+    if event == "workflow_dispatch":
+        return False
     if event != "push":
-        return False
+        return True
+    # A push is only pinned to one ref by a branches: filter naming exactly
+    # one branch, with no wildcard in it and no tags alongside it.
     if not isinstance(config, dict):
-        return False
+        return True
     if config.get("tags") or config.get("tags-ignore"):
-        return False
+        return True
     branches = config.get("branches")
     if not isinstance(branches, list):
         branches = [branches] if isinstance(branches, str) else []
     if len(branches) != 1 or not isinstance(branches[0], str):
-        return False
-    return not any(character in branches[0] for character in "*?[]!+")
+        return True
+    return any(character in branches[0] for character in "*?[]!+")

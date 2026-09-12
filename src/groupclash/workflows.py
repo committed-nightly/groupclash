@@ -58,6 +58,7 @@ class Workflow:
     declared_name: str | None
     triggers: dict[str, Any]
     jobs: dict[str, Any]
+    raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
     @property
     def display_name(self) -> str:
@@ -123,6 +124,7 @@ def parse(text: str, path: str) -> Workflow:
         declared_name=declared if isinstance(declared, str) and declared else None,
         triggers=normalise_triggers(trigger_block(document)),
         jobs=jobs if isinstance(jobs, dict) else {},
+        raw=document,
     )
 
 
@@ -180,9 +182,12 @@ def concurrency_blocks(workflow: Workflow, document: dict[str, Any]) -> list[Con
 
 
 def load(text: str, path: str) -> tuple[Workflow, list[Concurrency]]:
-    """Parse a workflow and pull its concurrency blocks out in one go."""
-    document = yaml.safe_load(text)
+    """Parse a workflow and pull its concurrency blocks out in one go.
+
+    Everything goes through `parse`, which is the only place that turns a
+    YAML error into a WorkflowError. Loading the document a second time here
+    would let a scanner error escape uncaught and take the process down with
+    a traceback instead of the documented exit 2.
+    """
     workflow = parse(text, path)
-    if not isinstance(document, dict):  # parse() has already rejected this
-        raise WorkflowError(f"{path}: top level is not a mapping")
-    return workflow, concurrency_blocks(workflow, document)
+    return workflow, concurrency_blocks(workflow, workflow.raw)
