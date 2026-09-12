@@ -1,0 +1,77 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Also the worked example. This is the group the tool is arguing for: it
+# varies per pull request on `pull_request`, falls back to the branch on a
+# push, and is prefixed with the workflow name so it cannot collide with
+# another file. The dogfood job below checks that groupclash agrees.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest
+
+  dogfood:
+    # Run the tool on this repository, for real.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+
+      - name: our own concurrency group is what we tell everyone to write
+        run: groupclash
+
+      - name: nothing is left undecided in our own workflows
+        run: |
+          groupclash > report.txt
+          if grep -q '^not checked:' report.txt; then
+            cat report.txt
+            echo "a group in this repository could not be decided"
+            exit 1
+          fi
+
+      # `code=0; cmd || code=$?` rather than `cmd; code=$?`, because these
+      # steps run under `bash -e` and the whole point is to run a command
+      # that exits non-zero.
+      - name: the group everyone copies is caught
+        run: |
+          cat > .github/workflows/scratch.yml <<'YAML'
+          name: Scratch
+          on: [push, pull_request]
+          concurrency:
+            group: ${{ github.workflow }}-${{ github.head_ref }}
+            cancel-in-progress: true
+          jobs:
+            a:
+              runs-on: ubuntu-latest
+              steps: [{run: 'true'}]
+          YAML
+          code=0; groupclash || code=$?
+          rm .github/workflows/scratch.yml
+          test "$code" -eq 1 || { echo "expected exit 1, got $code"; exit 1; }
+
+      - name: a directory with no workflows is an error, not a pass
+        run: |
+          mkdir -p /tmp/empty
+          code=0; groupclash /tmp/empty || code=$?
+          test "$code" -eq 2 || { echo "expected exit 2, got $code"; exit 1; }
