@@ -86,7 +86,13 @@ def collect(root: str) -> dict[str, str]:
 
 def wrap(text: str, indent: str) -> str:
     return textwrap.fill(
-        text, width=79, initial_indent=indent, subsequent_indent=indent
+        text,
+        width=79,
+        initial_indent=indent,
+        subsequent_indent=indent,
+        # Otherwise `cancel-in-progress` wraps as `cancel-in-` / `progress`,
+        # and half the nouns in this tool's vocabulary are hyphenated.
+        break_on_hyphens=False,
     )
 
 
