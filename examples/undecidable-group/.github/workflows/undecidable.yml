@@ -1,0 +1,17 @@
+# A group groupclash cannot decide. `matrix.os` has no value at the
+# workflow level and nothing here says what the matrix holds, so the checks
+# decline rather than guess, and the run names what it did not check.
+#
+# This is the corpus the dogfood job's `not checked:` guard is witnessed
+# against: that guard requires the string's absence in this repository, so
+# the proof that it can appear has to come from somewhere else.
+name: Undecidable
+on: [pull_request]
+concurrency:
+  group: ${{ matrix.os }}
+  cancel-in-progress: true
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'

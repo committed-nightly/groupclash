@@ -187,6 +187,30 @@ cannot decide !contains(github.event.pull_request.labels.*.name,
 
 No `fetch-depth` and no token: it reads files, and that is all it reads.
 
+### If you build a test workflow in a heredoc, check what got written
+
+GitHub substitutes `${{ }}` into a `run:` script before the shell sees it, so
+a corpus written inside a step is not the corpus you wrote:
+
+```yaml
+run: |
+  cat > .github/workflows/scratch.yml <<'YAML'
+  concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref }}
+  YAML
+  code=0; groupclash || code=$?
+  test "$code" -eq 1
+```
+
+That file comes out holding `group: test-my-branch` on a pull request and
+`group: test-` on a push. Both are findings, so the step passes, and it has
+never once been handed the template. Quoting the heredoc is no defence —
+the substitution happens when the runner generates the script, before bash
+starts. This repository's own dogfood job did it for two months.
+
+Keep the corpus in a file outside `.github/workflows/`, where GitHub has no
+reason to look at it. `examples/` here holds two.
+
 ## What it is not
 
 It is not a workflow linter. If you are not running one, run

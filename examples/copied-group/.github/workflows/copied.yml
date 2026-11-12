@@ -1,0 +1,20 @@
+# The group everyone copies, and the one the README argues against.
+#
+# `github.head_ref` is defined only on a pull request, so on a push this
+# whole group collapses to the workflow name -- one shared group for every
+# branch. With cancel-in-progress on, a push to one branch cancels a run on
+# another.
+#
+# This corpus is a file rather than a heredoc inside the dogfood job
+# because GitHub substitutes ${{ }} into a `run:` script before the shell
+# sees it. See examples/README.md.
+name: Scratch
+on: [push, pull_request]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'
